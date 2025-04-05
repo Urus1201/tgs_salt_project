@@ -10,12 +10,13 @@ import torch.nn.functional as F
 from dataset import TGSDataset
 from transforms import get_valid_transforms
 from model import UNetResNet
+from utils.logger import setup_logger
+from config import config
 
-def rle_encode(mask):
-    """
-    Convert a binary mask into run-length encoding.
-    Expects mask to be exactly (101, 101).
-    """
+logger = setup_logger(__name__, "logs/inference.log")
+
+def rle_encode(mask: np.ndarray) -> str:
+    """Convert binary mask to run-length encoding."""
     pixels = mask.flatten(order='F')
     # Pad with zeros at start and end
     pixels = np.concatenate([[0], pixels, [0]])
@@ -23,35 +24,49 @@ def rle_encode(mask):
     runs[1::2] -= runs[::2]
     return ' '.join(str(x) for x in runs)
 
-def run_inference(
-    test_dir,
-    model_dir='models',
-    output_file='submission.csv',
-    batch_size=8,
-    tta=True,
-    device='cuda'
-):
-    # Load both student and teacher models
-    student_model = UNetResNet(in_channels=4).to(device)
-    teacher_model = UNetResNet(in_channels=4).to(device)
-
-    student_model.load_state_dict(torch.load(Path(model_dir) / 'best_model.pth', map_location=device))
-    teacher_model.load_state_dict(torch.load(Path(model_dir) / 'best_teacher_model.pth', map_location=device))
+def run_inference(cfg=None) -> None:
+    """Run inference using config parameters."""
+    if cfg is None:
+        cfg = config
+        
+    train_cfg = cfg['training']
+    model_cfg = cfg['model']
     
+    logger.info("Starting inference with config...")
+    
+    # Load models
+    student_model = UNetResNet(
+        in_channels=model_cfg.in_channels,
+        n_classes=model_cfg.n_classes
+    ).to(train_cfg.device)
+    teacher_model = UNetResNet(
+        in_channels=model_cfg.in_channels,
+        n_classes=model_cfg.n_classes
+    ).to(train_cfg.device)
+
+    student_model.load_state_dict(
+        torch.load(Path(train_cfg.model_dir) / 'best_model.pth', map_location=train_cfg.device)
+    )
+    teacher_model.load_state_dict(
+        torch.load(Path(train_cfg.model_dir) / 'best_teacher_model.pth', map_location=train_cfg.device)
+    )
+    
+    logger.info("Models loaded successfully")
+
     student_model.eval()
     teacher_model.eval()
 
     # We assume your unlabeled test set is 4-channel in dataset too
     test_dataset = TGSDataset(
-        root_dir=test_dir,
+        root_dir=train_cfg.test_dir,
         transform=get_valid_transforms(),
         is_test=True
     )
     test_loader = DataLoader(
         test_dataset,
-        batch_size=batch_size,
+        batch_size=train_cfg.batch_size,
         shuffle=False,
-        num_workers=4
+        num_workers=train_cfg.num_workers
     )
 
     predictions = []
@@ -59,7 +74,7 @@ def run_inference(
 
     with torch.no_grad():
         for images, ids in test_loader:
-            images = images.to(device)
+            images = images.to(train_cfg.device)
             batch_preds = []
 
             # Basic forward pass
@@ -67,7 +82,7 @@ def run_inference(
             teacher_pred = teacher_model(images)
             batch_preds.extend([student_pred, teacher_pred])
 
-            if tta:
+            if train_cfg.tta:
                 # Horizontal flip TTA
                 flipped_images = torch.flip(images, dims=[-1])
                 student_pred_flip = torch.flip(student_model(flipped_images), dims=[-1])
@@ -111,13 +126,8 @@ def run_inference(
         'id': image_ids,
         'rle_mask': predictions
     })
-    df.to_csv(output_file, index=False)
-    print(f"Submission saved to {output_file}")
+    df.to_csv(train_cfg.output_file, index=False)
+    logger.info(f"Predictions saved to {train_cfg.output_file}")
 
 if __name__ == '__main__':
-    run_inference(
-        test_dir='../data/test',
-        model_dir='../models',
-        output_file='../submission.csv',
-        device='cuda' if torch.cuda.is_available() else 'cpu'
-    )
+    run_inference(config)

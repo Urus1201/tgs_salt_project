@@ -5,9 +5,36 @@ import torch
 import pandas as pd
 from torch.utils.data import Dataset
 from pathlib import Path
+from typing import Tuple, Optional, Union
+from utils.logger import setup_logger
+from config import config
+
+logger = setup_logger(__name__, "logs/dataset.log")
 
 class TGSDataset(Dataset):
-    def __init__(self, root_dir, transform=None, is_test=False, depths_file=None):
+    """Dataset class for TGS Salt Identification Challenge.
+    
+    Args:
+        root_dir: Root directory containing images and masks
+        transform: Optional albumentations transforms
+        is_test: Whether this is test set (no masks)
+        depths_file: Optional path to depths.csv
+        cfg: Configuration parameters
+    """
+    def __init__(
+        self,
+        root_dir: Union[str, Path],
+        transform: Optional[object] = None,
+        is_test: bool = False,
+        depths_file: Optional[str] = None,
+        cfg=None
+    ) -> None:
+        if cfg is None:
+            cfg = config
+            
+        self.data_cfg = cfg['data']
+        depths_file = depths_file or self.data_cfg.depths_file
+
         self.root_dir = Path(root_dir)
         self.transform = transform
         self.is_test = is_test
@@ -23,10 +50,16 @@ class TGSDataset(Dataset):
             depths_file = Path(root_dir).parent / 'depths.csv'
         self.depths = pd.read_csv(depths_file, index_col='id')
 
-    def __len__(self):
+        logger.info(f"Initializing dataset from {root_dir}")
+        logger.info(f"Found {len(self.ids)} images")
+
+    def __len__(self) -> int:
         return len(self.ids)
 
-    def __getitem__(self, idx):
+    def __getitem__(
+        self,
+        idx: int
+    ) -> Tuple[torch.Tensor, Union[torch.Tensor, str]]:
         img_id = self.ids[idx]
 
         # Load image
@@ -42,6 +75,7 @@ class TGSDataset(Dataset):
         img = np.concatenate([img, depth], axis=-1)
 
         if self.is_test:
+            logger.debug(f"Loading test image {img_id}")
             if self.transform:
                 augmented = self.transform(image=img)
                 img = augmented['image']
@@ -57,6 +91,7 @@ class TGSDataset(Dataset):
         mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
         mask = (mask > 0).astype(np.float32)
 
+        logger.debug(f"Loading train image and mask {img_id}")
         if self.transform:
             augmented = self.transform(image=img, mask=mask)
             img = augmented['image']

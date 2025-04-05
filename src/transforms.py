@@ -1,7 +1,16 @@
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+from utils.logger import setup_logger
 
-def get_train_transforms():
+logger = setup_logger(__name__, "logs/transforms.log")
+
+def get_train_transforms() -> A.Compose:
+    """Get training data augmentation pipeline.
+    
+    Returns:
+        A.Compose: Composed training transforms
+    """
+    logger.debug("Creating training transforms")
     return A.Compose([
         A.Resize(128, 128),  # First resize to target size
         A.OneOf([
@@ -30,7 +39,13 @@ def get_train_transforms():
         ToTensorV2(),
     ])
 
-def get_valid_transforms():
+def get_valid_transforms() -> A.Compose:
+    """Get validation data transforms.
+    
+    Returns:
+        A.Compose: Composed validation transforms
+    """
+    logger.debug("Creating validation transforms")
     return A.Compose([
         A.Resize(128, 128),
         A.Normalize(
@@ -40,20 +55,26 @@ def get_valid_transforms():
         ToTensorV2(),
     ])
 
-def get_unlabeled_transforms():
+def get_unlabeled_transforms() -> A.Compose:
+    """Get transforms for unlabeled data.
+    
+    Returns:
+        A.Compose: Composed transforms for unlabeled data
     """
-    Augmentations for unlabeled data.
-    """
+    logger.debug("Creating unlabeled data transforms")
     return A.Compose([
         A.Resize(height=128, width=128),
         A.HorizontalFlip(p=0.5),
         A.Normalize(mean=(0.5,), std=(0.5,)),
     ])
 
-def get_test_transforms():
+def get_test_transforms() -> A.Compose:
+    """Get basic transforms for inference.
+    
+    Returns:
+        A.Compose: Composed test transforms
     """
-    Basic transforms for inference (no heavy augmentation).
-    """
+    logger.debug("Creating test transforms")
     return A.Compose([
         A.Resize(height=128, width=128),
         A.Normalize(mean=(0.5,), std=(0.5,)),

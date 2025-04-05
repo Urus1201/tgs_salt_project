@@ -3,10 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 from torchvision.models import resnet34, ResNet34_Weights
+from typing import Tuple, List
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__, "logs/model.log")
 
 class ChannelSE(nn.Module):
     """Channel Squeeze and Excitation block."""
-    def __init__(self, channels, reduction=16):
+    def __init__(self, channels: int, reduction: int = 16) -> None:
         super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Sequential(
@@ -16,7 +20,7 @@ class ChannelSE(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, c, _, _ = x.size()
         y = self.avg_pool(x).view(b, c)
         y = self.fc(y).view(b, c, 1, 1)
@@ -24,28 +28,28 @@ class ChannelSE(nn.Module):
 
 class SpatialSE(nn.Module):
     """Spatial Squeeze and Excitation block."""
-    def __init__(self, channels):
+    def __init__(self, channels: int) -> None:
         super().__init__()
         self.conv = nn.Conv2d(channels, 1, kernel_size=1)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = self.conv(x)
         y = torch.sigmoid(y)
         return x * y
 
 class scSE(nn.Module):
     """Concurrent Spatial and Channel Squeeze and Excitation block."""
-    def __init__(self, channels, reduction=16):
+    def __init__(self, channels: int, reduction: int = 16) -> None:
         super().__init__()
         self.cSE = ChannelSE(channels, reduction)
         self.sSE = SpatialSE(channels)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.cSE(x) + self.sSE(x)
 
 class FPA(nn.Module):
     """Feature Pyramid Attention module."""
-    def __init__(self, channels):
+    def __init__(self, channels: int) -> None:
         super().__init__()
         
         # Global pooling branch
@@ -84,7 +88,7 @@ class FPA(nn.Module):
             nn.ReLU(inplace=True)
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         h, w = x.size(2), x.size(3)
         global_feat = self.global_pool(x)
         global_feat = F.interpolate(global_feat, size=(h, w), mode='bilinear', align_corners=True)
@@ -98,7 +102,8 @@ class FPA(nn.Module):
         return output
 
 class MultiScaleTransformerAttention(nn.Module):
-    def __init__(self, channels):
+    """Multi-scale transformer attention module."""
+    def __init__(self, channels: int) -> None:
         super().__init__()
         self.query_convs = nn.ModuleList([
             nn.Conv2d(channels, channels // 8, 1)
@@ -114,7 +119,7 @@ class MultiScaleTransformerAttention(nn.Module):
         ])
         self.fusion = nn.Conv2d(channels * 3, channels, 1)
         
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, c, h, w = x.shape
         scales = [(h, w), (h//2, w//2), (h//4, w//4)]
         outputs = []
@@ -143,7 +148,7 @@ class MultiScaleTransformerAttention(nn.Module):
 
 class ConvBlock(nn.Module):
     """(convolution => [BN] => ReLU) x 2 with scSE."""
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
         self.double_conv = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
@@ -155,7 +160,7 @@ class ConvBlock(nn.Module):
         )
         self.scse = scSE(out_channels)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.double_conv(x)
         x = self.scse(x)
         return x
@@ -166,12 +171,12 @@ class UpBlock(nn.Module):
        skip_in: number of channels from the skip connection.
        out_channels: number of output channels (and channels from transposed conv output).
     """
-    def __init__(self, up_in, skip_in, out_channels):
+    def __init__(self, up_in: int, skip_in: int, out_channels: int) -> None:
         super().__init__()
         self.up = nn.ConvTranspose2d(up_in, out_channels, kernel_size=2, stride=2)
         self.conv = ConvBlock(out_channels + skip_in, out_channels)
 
-    def forward(self, x1, x2):
+    def forward(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
         x1 = self.up(x1)
         diffY = x2.size()[2] - x1.size()[2]
         diffX = x2.size()[3] - x1.size()[3]
@@ -182,7 +187,7 @@ class UpBlock(nn.Module):
 
 class ResNetEncoder(nn.Module):
     """Use pretrained ResNet as encoder backbone."""
-    def __init__(self, backbone='resnet34'):
+    def __init__(self, backbone: str = 'resnet34') -> None:
         super().__init__()
         if backbone == 'resnet34':
             resnet = resnet34(weights=ResNet34_Weights.DEFAULT)
@@ -198,7 +203,7 @@ class ResNetEncoder(nn.Module):
         self.layer3 = resnet.layer3
         self.layer4 = resnet.layer4
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         x0 = self.layer0(x)   # [64, H/2,  W/2]
         x1 = self.layer1(x0)  # [64, H/4,  W/4]
         x2 = self.layer2(x1)  # [128, H/8, W/8]
@@ -207,7 +212,8 @@ class ResNetEncoder(nn.Module):
         return x0, x1, x2, x3, x4
 
 class FeaturePyramidAttention(nn.Module):
-    def __init__(self, in_channels):
+    """Feature Pyramid Attention module."""
+    def __init__(self, in_channels: int) -> None:
         super().__init__()
         self.pyramid_levels = [1, 2, 4]  # Reduced from [1,2,4,8] to manage channels
         
@@ -226,7 +232,7 @@ class FeaturePyramidAttention(nn.Module):
             nn.ReLU(inplace=True)
         )
         
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         size = x.size()[2:]
         feat = self.conv_1x1(x)
         pyramid_features = [feat]
@@ -244,8 +250,11 @@ class FeaturePyramidAttention(nn.Module):
         return output + x  # Skip connection
 
 class UNetResNet(nn.Module):
-    def __init__(self, n_classes=1, in_channels=4):  # Updated to accept in_channels
+    """U-Net with ResNet encoder for salt deposit segmentation."""
+    
+    def __init__(self, n_classes: int = 1, in_channels: int = 4) -> None:
         super().__init__()
+        logger.info(f"Initializing UNetResNet with {in_channels} input channels")
         # Load pretrained ResNet34 as encoder
         self.encoder = ResNetEncoder(backbone='resnet34')
 
@@ -291,7 +300,8 @@ class UNetResNet(nn.Module):
         # Final upsampling to match input size
         self.final_upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        logger.debug(f"Forward pass shape: {x.shape}")
         # Get encoder features
         x0, x1, x2, x3, x4 = self.encoder(x)
         
