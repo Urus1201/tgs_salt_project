@@ -244,11 +244,16 @@ class FeaturePyramidAttention(nn.Module):
         return output + x  # Skip connection
 
 class UNetResNet(nn.Module):
-    def __init__(self, n_classes=1):
+    def __init__(self, n_classes=1, in_channels=4):  # Updated to accept in_channels
         super().__init__()
         # Load pretrained ResNet34 as encoder
         self.encoder = ResNetEncoder(backbone='resnet34')
-        
+
+        # Update the first convolutional layer to accept in_channels
+        self.encoder.layer0[0] = nn.Conv2d(
+            in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False
+        )
+
         # Multi-scale transformer attention modules
         self.transformer_blocks = nn.ModuleList([
             MultiScaleTransformerAttention(64),  # After layer1
@@ -256,7 +261,7 @@ class UNetResNet(nn.Module):
             MultiScaleTransformerAttention(256), # After layer3
             MultiScaleTransformerAttention(512)  # After layer4
         ])
-        
+
         # Feature Pyramid Attention modules
         self.fpa_blocks = nn.ModuleList([
             FeaturePyramidAttention(64),
@@ -264,13 +269,13 @@ class UNetResNet(nn.Module):
             FeaturePyramidAttention(256),
             FeaturePyramidAttention(512)
         ])
-        
+
         # Decoder blocks
         self.decoder4 = UpBlock(512, 256, 256)
         self.decoder3 = UpBlock(256, 128, 128)
         self.decoder2 = UpBlock(128, 64, 64)
         self.decoder1 = UpBlock(64, 64, 32)
-        
+
         # Calculate total channels for hypercolumn
         # d1(32) + x1(64) + x2(128) + x3(256) + x4(512) = 992
         self.hypercolumn_fusion = nn.Sequential(
@@ -282,7 +287,7 @@ class UNetResNet(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(64, n_classes, kernel_size=1)
         )
-        
+
         # Final upsampling to match input size
         self.final_upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
         

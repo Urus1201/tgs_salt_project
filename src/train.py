@@ -40,7 +40,7 @@ def train_model(
     writer = SummaryWriter(log_dir)
 
     # Initialize student model and mean teacher
-    model = UNetResNet().to(device)
+    model = UNetResNet(in_channels=4).to(device)  # Updated to accept 4 input channels
     teacher = MeanTeacher(model, alpha=ema_decay)
 
     # Initialize datasets and dataloaders

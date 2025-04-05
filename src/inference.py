@@ -131,8 +131,8 @@ def run_inference(
     device='cuda'
 ):
     # Load both student and teacher models
-    student_model = UNetResNet().to(device)
-    teacher_model = UNetResNet().to(device)
+    student_model = UNetResNet(in_channels=4).to(device)  # Updated to accept 4 input channels
+    teacher_model = UNetResNet(in_channels=4).to(device)  # Updated to accept 4 input channels
     
     student_model.load_state_dict(torch.load(Path(model_dir) / 'best_model.pth'))
     teacher_model.load_state_dict(torch.load(Path(model_dir) / 'best_teacher_model.pth'))
@@ -141,7 +141,7 @@ def run_inference(
     teacher_model.eval()
 
     # Initialize test dataset and dataloader
-    test_dataset = TGSDataset(test_dir, transform=get_valid_transforms(), is_test=True)
+    test_dataset = TGSDataset(test_dir, transform=get_valid_transforms(), is_test=True, depths_file='../data/depths.csv')
     test_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
