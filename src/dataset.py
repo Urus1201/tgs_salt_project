@@ -45,6 +45,11 @@ class TGSDataset(Dataset):
             if self.transform:
                 augmented = self.transform(image=img)
                 img = augmented['image']
+                # Ensure channels are in the correct order for PyTorch (N,C,H,W)
+                if isinstance(img, np.ndarray):
+                    img = torch.from_numpy(img)
+                if len(img.shape) == 3 and img.shape[-1] == 4:
+                    img = img.permute(2, 0, 1)
             return img, img_id
 
         # Load mask for training
@@ -56,6 +61,12 @@ class TGSDataset(Dataset):
             augmented = self.transform(image=img, mask=mask)
             img = augmented['image']
             mask = augmented['mask']
+            
+            # Ensure channels are in the correct order for PyTorch (N,C,H,W)
+            if isinstance(img, np.ndarray):
+                img = torch.from_numpy(img)
+            if len(img.shape) == 3 and img.shape[-1] == 4:
+                img = img.permute(2, 0, 1)
 
         # Ensure mask has shape [H, W] -> [1, H, W]
         if isinstance(mask, np.ndarray):
