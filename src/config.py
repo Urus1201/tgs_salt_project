@@ -8,8 +8,9 @@ class TrainingConfig:
     train_dir: Path
     valid_dir: Path
     unlabeled_dir: Optional[Path] = None
-    model_dir: Path = Path('models')
+    model_dir: Path = Path('../models')
     log_dir: Path = Path('logs/runs')
+    output_file: Path = Path('../submissions/submission.csv')
     num_epochs: int = 100
     batch_size: int = 16
     learning_rate: float = 1e-4
@@ -19,6 +20,7 @@ class TrainingConfig:
     consistency_weight: float = 20.0
     ema_decay: float = 0.999
     grad_clip: float = 1.0
+    tta: bool = True
 
 @dataclass
 class ModelConfig:

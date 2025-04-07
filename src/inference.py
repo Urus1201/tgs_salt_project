@@ -58,7 +58,7 @@ def run_inference(cfg=None) -> None:
 
     # We assume your unlabeled test set is 4-channel in dataset too
     test_dataset = TGSDataset(
-        root_dir=train_cfg.test_dir,
+        root_dir=train_cfg.unlabeled_dir,
         transform=get_valid_transforms(),
         is_test=True
     )
