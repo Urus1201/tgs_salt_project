@@ -190,3 +190,5 @@ runs/
 logs/
 tensorboard/
 wandb/
+
+visualizations/
