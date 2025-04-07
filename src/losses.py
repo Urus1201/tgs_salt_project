@@ -115,7 +115,7 @@ def get_combined_loss(
 class CombinedLoss(nn.Module):
     """Combined loss function for salt segmentation."""
     
-    def __init__(self, beta: float = 0.7, boundary_weight: float = 0.5) -> None:
+    def __init__(self, beta: float = 0.7, boundary_weight: float = 2.0) -> None: #0.5
         super().__init__()
         logger.info(f"Initializing CombinedLoss with beta={beta}")
         self.beta = beta
